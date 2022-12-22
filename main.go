@@ -2,41 +2,50 @@ package main
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	"problem-01/mockstream"
 )
 
-func producer(stream mockstream.Stream) (tweets []*mockstream.Tweet) {
+var wg sync.WaitGroup
+
+func producer(stream mockstream.Stream, tweets chan *mockstream.Tweet) {
+	defer wg.Done()
 	for {
 		tweet, err := stream.Next()
 		if err == mockstream.ErrEOF {
-			return tweets
+			close(tweets)
+			return
 		}
-
-		tweets = append(tweets, tweet)
+		tweets <- tweet
 	}
 }
 
-func consumer(tweets []*mockstream.Tweet) {
-	for _, t := range tweets {
+func consumer(tweets chan *mockstream.Tweet) {
+	defer wg.Done()
+	for t := range tweets {
 		if t.IsTalkingAboutGo() {
 			fmt.Println(t.Username, "\ttweets about golang")
 		} else {
 			fmt.Println(t.Username, "\tdoes not tweet about golang")
 		}
 	}
+
 }
 
 func main() {
 	start := time.Now()
-	stream := mockstream.GetMockStream()
+	defer wg.Done()
 
+	stream := mockstream.GetMockStream()
+	tweets := make(chan *mockstream.Tweet)
+	wg.Add(2)
 	// Producer
-	tweets := producer(stream)
+	go producer(stream, tweets)
 
 	// Consumer
-	consumer(tweets)
-
+	go consumer(tweets)
+	wg.Wait()
 	fmt.Printf("Process took %s\n", time.Since(start))
 }
